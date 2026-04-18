@@ -33,7 +33,7 @@ pipeline {
       steps {
         script {
           if (isUnix()) {
-            sh 'npm ci'
+            sh 'docker run --rm -u "$(id -u):$(id -g)" -v "$WORKSPACE":/workspace -w /workspace node:20-alpine npm ci'
           } else {
             bat 'npm ci'
           }
@@ -46,7 +46,7 @@ pipeline {
         dir('backend') {
           script {
             if (isUnix()) {
-              sh 'npm ci'
+              sh 'docker run --rm -u "$(id -u):$(id -g)" -v "$WORKSPACE/backend":/workspace -w /workspace node:20-alpine npm ci'
             } else {
               bat 'npm ci'
             }
@@ -59,7 +59,7 @@ pipeline {
       steps {
         script {
           if (isUnix()) {
-            sh 'npm run build'
+            sh 'docker run --rm -u "$(id -u):$(id -g)" -v "$WORKSPACE":/workspace -w /workspace node:20-alpine npm run build'
           } else {
             bat 'npm run build'
           }
