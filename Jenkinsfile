@@ -68,18 +68,18 @@ pipeline {
       }
     }
 
-    stage('Check Docker CLI') {
+    stage('Check Docker Engine') {
       when {
         expression { return params.BUILD_DOCKER }
       }
       steps {
         script {
           if (isUnix()) {
-            env.HAS_DOCKER = (sh(returnStatus: true, script: 'command -v docker >/dev/null 2>&1') == 0).toString()
+            env.HAS_DOCKER = (sh(returnStatus: true, script: 'curl --silent --fail --unix-socket /var/run/docker.sock http://localhost/_ping | grep -qx OK') == 0).toString()
           } else {
             env.HAS_DOCKER = (bat(returnStatus: true, script: 'where docker >nul 2>nul') == 0).toString()
           }
-          echo "Docker CLI available: ${env.HAS_DOCKER}"
+          echo "Docker engine reachable: ${env.HAS_DOCKER}"
         }
       }
     }
@@ -106,8 +106,39 @@ pipeline {
       steps {
         script {
           if (isUnix()) {
-            sh 'docker build -t ${BACKEND_IMAGE_FULL} ./backend'
-            sh 'docker build -t ${FRONTEND_IMAGE_FULL} .'
+            sh '''
+              set -e
+
+              build_image() {
+                local context_dir="$1"
+                local dockerfile_name="$2"
+                local image_name="$3"
+                local context_tar
+                local response_file
+
+                context_tar="$(mktemp)"
+                response_file="$(mktemp)"
+                tar -C "$context_dir" -cf "$context_tar" .
+
+                curl --silent --show-error --fail --no-buffer \
+                  --unix-socket /var/run/docker.sock \
+                  -H 'Content-Type: application/x-tar' \
+                  -X POST \
+                  --data-binary "@$context_tar" \
+                  "http://localhost/build?t=${image_name}&dockerfile=${dockerfile_name}&rm=1" | tee "$response_file"
+
+                if grep -q '"error"' "$response_file"; then
+                  echo "Docker build failed for ${image_name}"
+                  cat "$response_file"
+                  exit 1
+                fi
+
+                rm -f "$context_tar" "$response_file"
+              }
+
+              build_image backend Dockerfile "$BACKEND_IMAGE_FULL"
+              build_image . Dockerfile "$FRONTEND_IMAGE_FULL"
+            '''
           } else {
             bat 'docker build -t %BACKEND_IMAGE_FULL% backend'
             bat 'docker build -t %FRONTEND_IMAGE_FULL% .'
