@@ -1,0 +1,57 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      PORT: 3001
+      MONGO_URI: mongodb://mongo:27017/speech
+    depends_on:
+      - mongo
+    ports:
+      - "3001:3001"
+
+  frontend:
+    build:
+      context: .
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+
+volumes:
+  mongo-data:
+  grafana-data:
