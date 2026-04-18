@@ -20,6 +20,7 @@ pipeline {
     BACKEND_IMAGE = 'speech-therapy-backend'
     FRONTEND_IMAGE = 'speech-therapy-frontend'
     IMAGE_TAG = "${BUILD_NUMBER}"
+    HAS_DOCKER = 'unknown'
   }
 
   stages {
@@ -33,7 +34,7 @@ pipeline {
       steps {
         script {
           if (isUnix()) {
-            sh 'docker run --rm -u "$(id -u):$(id -g)" -v "$WORKSPACE":/workspace -w /workspace node:20-alpine npm ci'
+            sh 'npm ci'
           } else {
             bat 'npm ci'
           }
@@ -46,7 +47,7 @@ pipeline {
         dir('backend') {
           script {
             if (isUnix()) {
-              sh 'docker run --rm -u "$(id -u):$(id -g)" -v "$WORKSPACE/backend":/workspace -w /workspace node:20-alpine npm ci'
+              sh 'npm ci'
             } else {
               bat 'npm ci'
             }
@@ -59,7 +60,7 @@ pipeline {
       steps {
         script {
           if (isUnix()) {
-            sh 'docker run --rm -u "$(id -u):$(id -g)" -v "$WORKSPACE":/workspace -w /workspace node:20-alpine npm run build'
+            sh 'npm run build'
           } else {
             bat 'npm run build'
           }
@@ -67,9 +68,25 @@ pipeline {
       }
     }
 
-    stage('Prepare Image Names') {
+    stage('Check Docker CLI') {
       when {
         expression { return params.BUILD_DOCKER }
+      }
+      steps {
+        script {
+          if (isUnix()) {
+            env.HAS_DOCKER = (sh(returnStatus: true, script: 'command -v docker >/dev/null 2>&1') == 0).toString()
+          } else {
+            env.HAS_DOCKER = (bat(returnStatus: true, script: 'where docker >nul 2>nul') == 0).toString()
+          }
+          echo "Docker CLI available: ${env.HAS_DOCKER}"
+        }
+      }
+    }
+
+    stage('Prepare Image Names') {
+      when {
+        expression { return params.BUILD_DOCKER && env.HAS_DOCKER == 'true' }
       }
       steps {
         script {
@@ -84,7 +101,7 @@ pipeline {
 
     stage('Build Docker Images') {
       when {
-        expression { return params.BUILD_DOCKER }
+        expression { return params.BUILD_DOCKER && env.HAS_DOCKER == 'true' }
       }
       steps {
         script {
@@ -103,6 +120,7 @@ pipeline {
       when {
         allOf {
           expression { return params.BUILD_DOCKER }
+          expression { return env.HAS_DOCKER == 'true' }
           expression { return params.PUSH_DOCKER }
           expression { return params.DOCKER_REPO?.trim() }
         }
@@ -128,6 +146,7 @@ pipeline {
       when {
         allOf {
           expression { return params.DEPLOY_TO_K8S }
+          expression { return env.HAS_DOCKER == 'true' }
           branch 'main'
         }
       }
