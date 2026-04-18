@@ -20,7 +20,6 @@ pipeline {
     BACKEND_IMAGE = 'speech-therapy-backend'
     FRONTEND_IMAGE = 'speech-therapy-frontend'
     IMAGE_TAG = "${BUILD_NUMBER}"
-    HAS_DOCKER = 'unknown'
   }
 
   stages {
@@ -74,19 +73,25 @@ pipeline {
       }
       steps {
         script {
+          def dockerOk = false
           if (isUnix()) {
-            env.HAS_DOCKER = (sh(returnStatus: true, script: 'curl --silent --fail --unix-socket /var/run/docker.sock http://localhost/_ping | grep -qx OK') == 0).toString()
+            dockerOk = (sh(returnStatus: true, script: 'curl --silent --fail --unix-socket /var/run/docker.sock http://localhost/_ping | grep -qx OK') == 0)
           } else {
-            env.HAS_DOCKER = (bat(returnStatus: true, script: 'where docker >nul 2>nul') == 0).toString()
+            dockerOk = (bat(returnStatus: true, script: 'where docker >nul 2>nul') == 0)
           }
-          echo "Docker engine reachable: ${env.HAS_DOCKER}"
+
+          if (!dockerOk) {
+            error('Docker engine is not reachable. Ensure Docker Desktop is running and try again.')
+          }
+
+          echo 'Docker engine reachable: true'
         }
       }
     }
 
     stage('Prepare Image Names') {
       when {
-        expression { return params.BUILD_DOCKER && env.HAS_DOCKER == 'true' }
+        expression { return params.BUILD_DOCKER }
       }
       steps {
         script {
@@ -101,7 +106,7 @@ pipeline {
 
     stage('Build Docker Images') {
       when {
-        expression { return params.BUILD_DOCKER && env.HAS_DOCKER == 'true' }
+        expression { return params.BUILD_DOCKER }
       }
       steps {
         script {
@@ -151,7 +156,6 @@ pipeline {
       when {
         allOf {
           expression { return params.BUILD_DOCKER }
-          expression { return env.HAS_DOCKER == 'true' }
           expression { return params.PUSH_DOCKER }
           expression { return params.DOCKER_REPO?.trim() }
         }
@@ -177,7 +181,6 @@ pipeline {
       when {
         allOf {
           expression { return params.DEPLOY_TO_K8S }
-          expression { return env.HAS_DOCKER == 'true' }
           branch 'main'
         }
       }
